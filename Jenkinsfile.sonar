@@ -1,0 +1,77 @@
+// Atelier 6 - Pipeline Jenkins + SonarQube (job : Pipeline-SonarQube)
+// Prérequis Jenkins :
+//   - Plugin "SonarQube Scanner" installé
+//   - Serveur SonarQube nommé "SonarQube" (Administrer Jenkins -> System), URL http://192.168.33.10:9000,
+//     avec le token SonarQube en credential "Secret text"
+//   - Webhook SonarQube -> http://192.168.33.10:8080/sonarqube-webhook/ (pour le Quality Gate)
+pipeline {
+    agent any
+
+    tools {
+        jdk 'JAVA_HOME'
+        maven 'M2_HOME'
+    }
+
+    stages {
+        stage('GIT') {
+            steps {
+                git branch: 'main', url: 'https://github.com/ameniissaoui/DevOps-AppGestionDesProjets.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                dir('backend') {
+                    sh 'mvn -B clean compile'
+                }
+            }
+        }
+
+        stage('Tests') {
+            steps {
+                dir('backend') {
+                    // lance les tests unitaires + génère le rapport de couverture JaCoCo
+                    sh 'mvn -B test'
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('SonarQube') {
+            steps {
+                dir('backend') {
+                    // injecte SONAR_HOST_URL et le token du serveur "SonarQube" configuré dans Jenkins
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'mvn -B sonar:sonar'
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    // attend le résultat envoyé par le webhook SonarQube ; échoue le pipeline si "Failed"
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                dir('backend') {
+                    sh 'mvn -B package -DskipTests'
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'backend/target/*.jar', fingerprint: true
+                }
+            }
+        }
+    }
+}
