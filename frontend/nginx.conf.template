@@ -1,0 +1,27 @@
+# Modèle nginx : les variables ${...} sont remplacées au démarrage du conteneur (envsubst de l'image nginx).
+#   BACKEND_HOST / BACKEND_PORT : adresse du backend
+#     - Docker Compose : backend:8080 (valeurs par défaut du Dockerfile)
+#     - Kubernetes     : spring-service.devops.svc.cluster.local:8080
+#   NGINX_LOCAL_RESOLVERS : DNS du conteneur (lu dans /etc/resolv.conf)
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Résolution DNS à chaque requête : nginx démarre même si le backend n'est pas encore là
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+    set $backend_upstream http://${BACKEND_HOST}:${BACKEND_PORT};
+
+    # API REST -> backend
+    location ~ ^/(entreprise|equipe|projet|projet-detaille)/ {
+        proxy_pass $backend_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Routes Angular (SPA)
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

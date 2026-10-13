@@ -11,6 +11,10 @@ RUN sed -i 's#http://localhost:8080##g' src/app/services/*.ts \
 
 # ---------- Étape 2 : serveur nginx ----------
 FROM nginx:alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Adresse du backend (surchargée dans Kubernetes) + DNS local injecté dans le modèle nginx
+ENV BACKEND_HOST=backend \
+    BACKEND_PORT=8080 \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist/frontend/browser /usr/share/nginx/html
 EXPOSE 80
